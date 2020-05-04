@@ -2,33 +2,55 @@ from qutip import *
 import matplotlib.pyplot as plt
 import numpy as np
 from pylab import *
+from qutip import tensor, basis, destroy, qeye, mesolve
 from matplotlib.patches import Rectangle
 from matplotlib.animation import FuncAnimation
 
-# number of Fock states in Hilbert space.
-N=3
+# define the field
 
-# field operators
-a = tensor(destroy(N), qeye(3))
-b = tensor(destroy(N), qeye(3))
+N=3 # number of Fock states in Hilbert space of mode 1.
 
-nc = a.dag() * a
-xc = (a +a.dag())
+Two_Mode = False
 
-# atom states
-astate = basis(3,2)
+basis_mode_1 = basis(N,0)
+
+if Two_Mode is True:
+    M = 4
+    basis_mode_2 = basis(M,0)
+    # 2 mode field operators
+    a_1 = tensor(destroy(N), qeye(M))
+    b_1 = tensor(qeye(N), destroy(M))
+
+    a = tensor(a_1 +b_1, qeye(3))
+    I_f = tensor(qeye(N), qeye(M))
+    
+if Two_Mode is False:
+    a = tensor(destroy(N), qeye(3))
+    I_f = qeye(N)
+
+#a = tensor(destroy(N), qeye(3))
+#I_f = qeye(N)
+
+# atom 1 states
+astate = basis(3,0)
 bstate = basis(3,1)
-cstate = basis(3,0)
+cstate = basis(3,2)
+
+#print(Qobj(I_f))
+#print(Qobj(a))
+#print(Qobj(sab))
+#print('now this')
+#print(I_f + a_1)
 
 # atomic operators
-saa= tensor(qeye(N), astate*astate.dag())
-sbb= tensor(qeye(N), bstate*bstate.dag())
-scc= tensor(qeye(N), cstate*cstate.dag())
-sab= tensor(qeye(N), astate*bstate.dag())
-sac= tensor(qeye(N), astate*cstate.dag())
-sbc= tensor(qeye(N), bstate*cstate.dag())
-I = tensor(qeye(N), qeye(3))
-sm = tensor(qeye(N), destroy(3))
+saa = tensor(I_f, astate*astate.dag())
+sbb = tensor(I_f, bstate*bstate.dag())
+scc = tensor(I_f, cstate*cstate.dag())
+sab = tensor(I_f, astate*bstate.dag())
+sac = tensor(I_f, astate*cstate.dag())
+sbc = tensor(I_f, bstate*cstate.dag())
+I = tensor(I_f, qeye(3))
+sm = tensor(I_f, destroy(3))
 
 # transition frequencies
 om_a = 0
@@ -61,12 +83,15 @@ g1 = 1.0
 g2 = 1.0
 
 # rotating wave approximation  #WRONG!
-RWA = False
+RWA = True
 if RWA is False:
     RWA_switch=1
 if RWA is True:
     RWA_switch=0
     
+xc = (a + RWA_switch*a.dag())
+nc = a.dag() * a
+
 # atom Hamiltonian
 H_a = (om_a*saa + om_b*sbb + om_c*scc)
 
@@ -74,25 +99,25 @@ H_a = (om_a*saa + om_b*sbb + om_c*scc)
 H_f = Om1*a.dag()*a
 
 # atom-field interaction hamiltonian
-Hc_ac_m = g2*a.dag()*(sab.dag())  # b -> a time-dependent term
+Hc_ac_m = g2*xc.dag()*(sab)  # b -> a, a-dag & sigma minus, time-dependent term
 def Hc_ac_m_coeff(t, args):
     ab_detun = np.exp(1j*((Delta_1)*t))
     return ab_detun
 
-Hc_ab_m = g1*a.dag()*(sac.dag())  # c -> a time-dependent term
+Hc_ab_m = g1*xc.dag()*(sac)  # c -> a, a-dag & sigma minus, time-dependent term
 def Hc_ab_m_coeff(t, args):
     ac_detun = np.exp(1j*((Delta_2)*t))
     return ac_detun
 
-Hc_ac_p = g2*(sab)*a  # a -> b time-dependent term
+Hc_ac_p = g2*xc*(sab.dag())  # a -> b, a & sigma plus, time-dependent term
 def Hc_ac_p_coeff(t, args):
     ab_detun = np.exp(-1j*((Delta_1)*t))
-    return ab_detun.conjugate()
+    return ab_detun
 
-Hc_ab_p = g1*(sac)*a  # a -> c time-dependent term
+Hc_ab_p = g1*xc*(sac.dag())  # a -> c, a & sigma plus, time-dependent term
 def Hc_ab_p_coeff(t, args):
     ac_detun = np.exp(-1j*((Delta_2)*t))    
-    return  ac_detun.conjugate()
+    return  ac_detun
 
 # atom-cavity Hamiltonian
 phi = 0
@@ -112,13 +137,19 @@ tlist = np.linspace(0, tf, tsteps)
 
 # pumping settings
 lamsteps = 250
-lamlim = 1.0
+lamlim = 0.1
 lamarray = np.linspace(0, lamlim, lamsteps)
 
 # atom and field initially prepared as a wavefunction
 # atom initial wavefunction
+
 psi_at = astate +bstate +cstate
-psi0 = tensor(basis(N,0), psi_at).unit()
+
+if Two_Mode is True:
+    psi0 = tensor(tensor(basis_mode_1,basis_mode_2), psi_at).unit()
+    
+if Two_Mode is False:
+    psi0 = tensor(basis(N,0), psi_at).unit()
 
 # atom and field initially prepared as a density matrix
 # atom initial density matrix
@@ -129,7 +160,12 @@ rho_at_offdiag = cstate*bstate.dag() +bstate*cstate.dag()
 rho_at = (rho_at_diag + rho_at_offdiag).unit()
 
 # field initial density matrix
-rho_cav  = basis(N,0)*basis(N,0).dag()
+
+if Two_Mode is True:
+    rho_cav  = tensor(basis_mode_1,basis_mode_2)*tensor(basis_mode_1,basis_mode_2).dag()
+    
+if Two_Mode is False:
+    rho_cav  = basis_mode_1*basis_mode_1.dag()
 
 # system initial density matrix
 rho0 = tensor(rho_cav, rho_at)
@@ -140,8 +176,8 @@ def collapse_ops(i):
     
     # incoherent pumping
     lam = i # incoherent pumping rate to a from b and c
-    c_ops.append(np.sqrt(lam) * sab.dag()) # b->a
-    c_ops.append(np.sqrt(lam) * sac.dag()) # c->a
+    c_ops.append(np.sqrt(lam) * sab.dag()) # a->b
+    c_ops.append(np.sqrt(lam) * sac.dag()) # a->c
         
     # cavity relaxation 
     kappa=0.01 # cavity relaxation rate
@@ -151,8 +187,8 @@ def collapse_ops(i):
     
     # atomic relaxation 
     # cavity decay rates
-    Gam1=0.01 # a -> b decay rate
-    Gam2=0.01 # a -> c decay rate
+    Gam1=0.01 # b -> a decay rate
+    Gam2=0.01 # c -> a decay rate
     c_ops.append(np.sqrt(Gam1) * sab)
     c_ops.append(np.sqrt(Gam2) * sac)
 
@@ -161,20 +197,22 @@ def collapse_ops(i):
     T2 = 1.0
     Sz_ac_ab = ((saa-scc)+(saa-sbb))
     Sz_ac_ab_d = ((scc-saa)+(sbb-saa))
-#    c_ops.append(0.5*T1*Sz_ac_ab)
-#    c_ops.append(0.5*T2*Sz_ac_ab_d)
+    c_ops.append(0.5*T1*Sz_ac_ab)
+    c_ops.append(0.5*T2*Sz_ac_ab_d)
     
     # bc lifetime and dephasing
     tau1 = 1.0
     tau2 = 1.0
     Sz_bc = (sbb-scc)
     Sz_bc_d = (scc-sbb)
-#    c_ops.append(0.5*tau1*Sz_bc)
-#    c_ops.append(0.5*tau2*Sz_bc_d)
+    c_ops.append(0.5*tau1*Sz_bc)
+    c_ops.append(0.5*tau2*Sz_bc_d)
 
     return c_ops,
 
-plt.figure(1)
+# the animation plot if you are interested in looking into the time dependence
+
+#plt.figure(1)
 ax1 = plt.axes(xlim=(0, tf), ylim=(-2.5, 2.5))
 line1, = ax1.plot([], [], lw=2)
 line2, = ax1.plot([], [], lw=2)
@@ -203,10 +241,12 @@ def Scully_ME(i):
 #anim = FuncAnimation(plt.figure(1), Scully_ME, frames=lamarray, init_func=init, blit=True)
 #anim.save('maser_animation_ScullyE.gif', fps=10, extra_args=['-vcodec', 'libx264'])
 
-plt.show()
+#plt.show()
 
 plt.figure(2)
 ax2 = plt.axes(xlim=(0, lamlim), ylim=(-5, 5))
+line1b, = ax2.plot([], [], lw=2)
+line2b, = ax2.plot([], [], lw=2)
 
 output1 = []
 output2 = []
@@ -226,7 +266,7 @@ def Scully_Populations(i):
     ax2.set_ylabel('E($t$)')
     ax2.set_title('Electric Field in a 3LS');
     extra = Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0)
-    plt.legend([extra, line1, line2], (str(round(i,3)), "<xc>", "<nc>"))
+    plt.legend([extra, line1b, line2b], (str(round(i,3)), "<xc>", "<nc>"))
 #    plt.legend(bbox_to_anchor=(0.9, 0.9))
     return output1, output2, output3, output4, output5,
 
@@ -244,21 +284,7 @@ plt.show()
 
 plt.figure(3)
 plotlim3=1.0
-ax3 = plt.axes(xlim=(0, plotlim3), ylim=(0, 1.0))
-    
-ax3.plot(lamarray, output3, label="<aa>")
-ax3.plot(lamarray, output4, label="<bb>")
-ax3.plot(lamarray, output5, label="<cc>")
-ax3.legend()
-ax3.set_xlabel('lambda')
-ax3.set_ylabel('Populations')
-ax3.set_title('Populations in a 3LS');
-
-plt.show()
-
-plt.figure(4)
-plotlim4=0.1
-ax3 = plt.axes(xlim=(0, plotlim4), ylim=(0, 1.0))
+ax3 = plt.axes(xlim=(0, lamlim), ylim=(0, 1.0))
     
 ax3.plot(lamarray, output3, label="<aa>")
 ax3.plot(lamarray, output4, label="<bb>")
